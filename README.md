@@ -8,7 +8,7 @@ With the default settings, I'm guessing this will download about 2.2 billion row
 100,000 API calls can be made a day through EOD Historical Data.. Each request for ticket data counts at 5 API calls. You can request 120 days at a time for 1 symbol.
 I'm looking for 1 min tick data, so that's what I'm going to be calling the API for. I believe I want it from the last 12 years.
 I do want 12 full calendar years of data from Jan 1 - Dec 31, so I will be grabbing slightly more than 12 years of data, as today is 2/25/2023. 
-I've found that EOD historical data provides the cheapest option for gathering such data that I'm interested in requiring, however, the access to the data is not great.
+I've found that EOD historical data provides the cheapest option for gathering such data that I'm interested in acquiring, however, the access to the data is not great.
 Which is exactly why this program is being built. I can request 20,000 120-day (1 min interval)/day, but TBH my internet isn't fantastic, being out in the middle
 of nowhere Alaska. I have two sources of internet, AT&T business and Starlink. The AT&T business is much slower but more reliable, it's a MOFI connection. 
 The Starlink connection is much faster, but not as reliable, at the moment the connection from Starlink goes out around every 7 minutes...
