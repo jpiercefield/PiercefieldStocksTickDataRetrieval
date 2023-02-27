@@ -13,6 +13,6 @@ Which is exactly why this program is being built. I can request 20,000 120-day (
 of nowhere Alaska. I have two sources of internet, AT&T business and Starlink. The AT&T business is much slower but more reliable, it's a MOFI connection. 
 The Starlink connection is much faster, but not as reliable, at the moment the connection from Starlink goes out around every 7 minutes...
 So, I'm not enthused about either scenario to be honest. 
-However, I'm thinking with if I add enough error checking, then Starlink will be the way to go. As I'm going to be able to download the data much faster..
+However, I'm thinking if I add enough error checking, then Starlink will be the way to go. As I'm going to be able to download the data much faster..
 I can only make 20,000 API requests per day and need about 52,000 overall to do the job.. 
 Which means, I can complete the job in 3 days, as long as my network throughput will handle the 2-3 TB of data.
