@@ -14,7 +14,27 @@ class Program
         Console.WriteLine("WARNING: By default, this program is set-up to insert nearly 2.2 BILLION rows of data into your SQL server, so ensure if you're using these default values that you have adequate storage.");
         Console.WriteLine("WARNING: Do your own math to determine exactly how much storage space you'll need. Default could need around 5-6 TB for redundancies and speed, depends on how you set-up your DB table though.");
         Console.WriteLine("WARNING: I reccomend removing any indexes on your table prior to inserting this data, this will help with processing speeds.");
-        string apiKey = Environment.GetEnvironmentVariable("MyAPIToken") ?? ""; //Inserting this into computer's enviornment variables, keeps it safe. 
+        string? apiKey = Environment.GetEnvironmentVariable("MyAPIToken"); //Inserting this into computer's enviornment variables, keeps it safe. 
+
+        string? dataSource = Environment.GetEnvironmentVariable("DB_SERVER");
+        string? databaseName = Environment.GetEnvironmentVariable("DB_NAME");
+        string? username = Environment.GetEnvironmentVariable("DB_USER");
+        string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+        if(string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(dataSource) || string.IsNullOrEmpty(databaseName) || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password)) {
+            Console.WriteLine("One or more of your enviornment variables are empty.");
+            Console.WriteLine("MyAPIToken should be added, your variable's value is: " + apiKey ?? "");
+            Console.WriteLine("DB_SERVER should be added, your variable's value is: " + dataSource ?? "");
+            Console.WriteLine("DB_NAME should be added, your variable's value is: " + databaseName ?? "");
+            Console.WriteLine("DB_USER should be added, your variable's value is: " + username ?? "");
+            Console.WriteLine("DB_PASSWORD should be added, your variable's value is: " + password ?? "");
+            Console.WriteLine("Exiting the program in 5 seconds.");
+            Thread.Sleep(5000);
+            Environment.Exit(0);
+        }
+
+        string connectionString = $"Data Source={dataSource};Initial Catalog={databaseName};User ID={username};Password={password};";
+
         if(apiKey == string.Empty) {
             Console.WriteLine("Your API Key is empty.");
         } else {
@@ -86,13 +106,9 @@ class Program
                             }
                         }
                     }
-                }
+                }             
 
-                
-                dtmBeginDate = dtmBeginDate.Date + TimeSpan.FromHours(8); // 8 AM 
-                dtmEndDate = dtmBeginDate.Date + TimeSpan.FromHours(17); // 5 PM
-
-                List<DateTime> holidays = Helper.GetUSStockMarketHolidays(dtmBeginDate.Date, dtmEndDate.Date);
+                List<DateTime> holidays = Helper.GetUSStockMarketHolidays(dtmBeginDate.Date, dtmEndDate.Date);               
 
                 Console.WriteLine("Data Retrieval and Insertion is about to commence. Multi-threading or various synchro approaches could be implemented here. I'm using async programming as I only want to do this once.");
                 Console.WriteLine("Independent benchmarking should be determined if you feel as if you can implement that for your system.");
@@ -110,7 +126,7 @@ class Program
 
                 int numberOfRequests = 0;
                 while(20000 - numberOfRequests >= numberOfMaxRequestsPerSymbol && beginIndex < symbols.Count) { //Don't start a new symbol if we don't have the available requests or if all symbols are done.
-                    numberOfRequests += await RetrieveTickData.BeginTickRetrieval(symbols[beginIndex], dtmBeginDate, dtmEndDate, holidays);                  
+                    numberOfRequests += await RetrieveTickData.BeginTickRetrieval(apiKey, symbols[beginIndex], dtmBeginDate, dtmEndDate, holidays, connectionString);                  
                     beginIndex++;
                 }
 
