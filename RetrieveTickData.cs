@@ -1,4 +1,7 @@
 ﻿using System.Data.SqlClient;
+using System.Globalization;
+using CsvHelper;
+using System.Data;
 
 namespace PiercefieldStocksTickDataRetrieval;
 public class RetrieveTickData {
@@ -15,20 +18,23 @@ public class RetrieveTickData {
             if(currentDate.DayOfWeek != DayOfWeek.Saturday && currentDate.DayOfWeek != DayOfWeek.Sunday && !holidays.Contains(currentDate)) {
                 DateTime beginningOfPeriod = currentDate.Date.AddDays(-119).Date.AddHours(8); // 8 AM 119 days before
                 DateTime endOfPeriod = currentDate.Date.AddHours(17); // end time at 5 PM
-
+                
                 if(beginningOfPeriod.Date < BeginDate.Date) {
                     beginningOfPeriod = BeginDate.Date;
                     beginningOfPeriod.Date.AddHours(8);
                 }
+
+                beginningOfPeriod = DateTime.SpecifyKind(beginningOfPeriod, DateTimeKind.Unspecified);
+                endOfPeriod = DateTime.SpecifyKind(endOfPeriod, DateTimeKind.Unspecified);
 
                 DateTime parameterBeginTime = TimeZoneInfo.ConvertTimeToUtc(beginningOfPeriod, easternZone);
                 DateTime parameterEndTime = TimeZoneInfo.ConvertTimeToUtc(endOfPeriod, easternZone);
                 long fromUnixTime = ((DateTimeOffset)parameterBeginTime).ToUnixTimeSeconds();
                 long toUnixTime = ((DateTimeOffset)parameterEndTime).ToUnixTimeSeconds();
 
-                string apiUrl = "https://eodhistoricaldata.com/api/intraday/" + Symbol + ".US?api_token=" + APIKey + "interval=1m&from=" + fromUnixTime.ToString() + "&to=" + toUnixTime.ToString();
+                string apiUrl = "https://eodhistoricaldata.com/api/intraday/" + Symbol + ".US?api_token=" + APIKey + "&interval=1m&from=" + fromUnixTime.ToString() + "&to=" + toUnixTime.ToString();
 
-                int responseCode = await DownloadAndInsertCsvFromAPIAsync(apiUrl, DatabaseConnection);
+                int responseCode = await DownloadAndInsertCsvFromAPIAsync(apiUrl, DatabaseConnection, Symbol);
                 if(responseCode == - 1) {
                     Console.WriteLine("There was an issue with your request, please see the output above.");
                     Console.WriteLine("Press 1 to continue, otherwise type anything else and the program will exit.");
@@ -54,7 +60,7 @@ public class RetrieveTickData {
         return NumberOfRequests;
     }
 
-    private static async Task<int> DownloadAndInsertCsvFromAPIAsync(string url, string DatabaseConnection) {
+    private static async Task<int> DownloadAndInsertCsvFromAPIAsync(string url, string DatabaseConnection, string Symbol) {
         int maxAttempts = 20;
         int currentAttempt = 0;
 
@@ -69,29 +75,102 @@ public class RetrieveTickData {
                 HttpResponseMessage response = await _httpClient.GetAsync(url, _cancellationTokenSource.Token);
                 response.EnsureSuccessStatusCode();
 
-                string csvData = await response.Content.ReadAsStringAsync();
-                if(csvData.Trim().Equals("Value", StringComparison.OrdinalIgnoreCase)) {
-                    Console.WriteLine("No data returned");
-                    return 1;
-                }
+                using(var stream = await response.Content.ReadAsStreamAsync()) {
+                    if(stream.Length == 0) {
+                        Console.WriteLine("No data returned");
+                        return 1;
+                    }
 
-                File.WriteAllText("\\\\servername\\sharename\\data.csv", csvData); //ToDo: Once Synology NAS arrive's I'll configure directories
+                    using var reader = new StreamReader(stream);
+                    using(var csv = new CsvReader(reader, CultureInfo.InvariantCulture)) {
 
-                // Insert the CSV data into the database
-                using(var connection = new SqlConnection(DatabaseConnection)) {
-                    await connection.OpenAsync();
-                    //ToDo: Once Synology NAS arrive's I'll configure directories
-                    using var command = new SqlCommand("INSERT INTO yourtablename SELECT * FROM OPENROWSET('MSDASQL', 'Driver={Microsoft Access Text Driver (*.txt, *.csv)};DefaultDir=\\\\servername\\sharename;Extensions=csv;HDR=YES;CharacterSet=65001;', 'SELECT * FROM [" + "data.csv" + "]')", connection); 
-                    int rowsAffected = await command.ExecuteNonQueryAsync();
-                    if(rowsAffected == -1) {
-                        Console.WriteLine("Data was not inserted correctly");
-                        return -1;
+                        // Check if there is any data
+                        if(reader.Peek() == -1) {
+                            Console.WriteLine("No data returned");
+                            return 1;
+                        }
+
+                        DataTable dataTable = new();
+                        if(csv.Read()) {
+                            csv.ReadHeader();
+                            if(csv.HeaderRecord == null || csv.HeaderRecord.Length <= 1 || csv.HeaderRecord[0].ToUpper() == "VALUE") {
+                                Console.WriteLine("End of Symbol from VALUE finished for: " + Symbol);
+                                return 1;
+                            }
+
+                            foreach(var header in csv.HeaderRecord) {
+                                dataTable.Columns.Add(header);                              
+                            }
+
+                            dataTable.Columns.Add("Symbol", typeof(string)); // Add Symbol column                           
+
+                        } else {
+                            Console.WriteLine("No data returned");
+                            return 1;
+                        }
+
+                        while(csv.Read()) {
+                            var row = dataTable.NewRow();
+                            for(var i = 0; i < dataTable.Columns.Count - 1; i++) {
+                                row[i] = csv.GetField(i);
+                            }
+
+                            if(row.IsNull("Volume")) {
+                                row["Volume"] = 0;
+                            } else {
+                                string? volumeStr = row["Volume"].ToString();
+                                if(string.IsNullOrEmpty(volumeStr)) {
+                                    row["Volume"] = 0;
+                                } else {
+                                    if(!long.TryParse(volumeStr, out long volume)) {
+                                        row["Volume"] = 0;
+                                    }
+                                }
+                            }
+
+                            row["Symbol"] = Symbol; // Set Symbol value
+                            dataTable.Rows.Add(row);
+                        }
+
+                        using var connection = new SqlConnection(DatabaseConnection);
+                        await connection.OpenAsync();
+                        using var transaction = connection.BeginTransaction();
+                        try {
+                            using(var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction)) {
+                                bulkCopy.DestinationTableName = "dbo.IntradayData";
+                                bulkCopy.BatchSize = 10000;
+                                bulkCopy.ColumnMappings.Add("Symbol", "Symbol"); // Add Symbol mapping
+                                bulkCopy.ColumnMappings.Add("Timestamp", "Timestamp");
+                                bulkCopy.ColumnMappings.Add("Gmtoffset", "Gmtoffset");
+                                bulkCopy.ColumnMappings.Add("Datetime", "Datetime");
+                                bulkCopy.ColumnMappings.Add("Open", "Open");
+                                bulkCopy.ColumnMappings.Add("High", "High");
+                                bulkCopy.ColumnMappings.Add("Low", "Low");
+                                bulkCopy.ColumnMappings.Add("Close", "Close");
+                                bulkCopy.ColumnMappings.Add("Volume", "Volume");
+
+                                try {
+                                    bulkCopy.WriteToServer(dataTable);
+                                } catch(Exception ex) {
+                                    Console.WriteLine($"Error copying data: {ex.Message}");
+                                    return -1;
+                                }
+                            }
+
+                            transaction.Commit();
+                        } catch(Exception ex) {
+                            transaction.Rollback();
+                            connection.Close();
+                            Console.WriteLine("Bulk insert failed. Transaction rolled back.");
+                            Console.WriteLine(ex.ToString());
+                            return -1;
+                        }
+
+                        connection.Close();
                     }
                 }
-
+                           
                 Console.WriteLine("Data was inserted successfully");
-                //ToDo: Once Synology NAS arrive's I'll configure directories
-                File.Delete("\\\\servername\\sharename\\data.csv"); // Delete the file from the server
 
                 return 0;
             } catch(HttpRequestException ex) {
@@ -108,14 +187,14 @@ public class RetrieveTickData {
                 currentAttempt++;
             } catch(TaskCanceledException) {
                 Console.WriteLine($"Download of {url} cancelled");
-                return -1;
+                currentAttempt++;
             } catch(UnauthorizedAccessException ex) {
                 Console.WriteLine($"Error: {ex.Message}");
                 Console.WriteLine("Exception occurred, most likely an error regarding unauthorized access to write to the server.");
-                return -1;
+                currentAttempt++;
             } catch(Exception ex) {
                 Console.WriteLine($"Error: {ex.Message}");
-                return -1;
+                currentAttempt++;
             }
         }
 

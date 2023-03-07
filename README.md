@@ -16,3 +16,16 @@ So, I'm not enthused about either scenario to be honest.
 However, I'm thinking with if I add enough error checking, then Starlink will be the way to go. As I'm going to be able to download the data much faster..
 I can only make 20,000 API requests per day and need about 52,000 overall to do the job.. 
 Which means, I can complete the job in 3 days, as long as my network throughput will handle the 2-3 TB of data.
+
+
+The project is now complete and I have successfully loaded all of the data into my database.
+It ended up only taking about two days to run, because not all of the stock tickers had a full 12 year histories. 
+The extra time that I spent handling exceptions really payed off for me, I had many instances of connection issues with Starlink along the way. 
+Additionally, I added Sql bulk copy functionality here, which made insertions to the database seamless.
+The only real issue I faced along the way was getting this program to successfully insert into the database on the DiskStation.
+I found one comment deep into the internet that suggested that insertions from a .NET SQL Client into Linux based Docker MS SQL containers was impossible.
+I tried just about everything I could to get it to work and was just on the edge of deciding to move over to a different database type, but then I found
+another comment even deeper into the webs that someone was able to make it work using a linked server. So, I set-up a linked server in SSMS and it
+worked great, but I had to set-up the permissions just right. I tried probably 40+ different SQLConnection strings until I found the one that worked.
+The linked server type had to be of 'Microsoft OLE DB Provider for SQL Server', Integrated Security=False;Trusted_Connection=False; to the connection string,
+specifically setting the destination table name to 'dbo.IntradayData' instead of just 'IntradayData'.

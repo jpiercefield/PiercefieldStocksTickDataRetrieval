@@ -14,9 +14,9 @@ class Program
         Console.WriteLine("WARNING: By default, this program is set-up to insert nearly 2.2 BILLION rows of data into your SQL server, so ensure if you're using these default values that you have adequate storage.");
         Console.WriteLine("WARNING: Do your own math to determine exactly how much storage space you'll need. Default could need around 5-6 TB for redundancies and speed, depends on how you set-up your DB table though.");
         Console.WriteLine("WARNING: I reccomend removing any indexes on your table prior to inserting this data, this will help with processing speeds.");
-        string? apiKey = Environment.GetEnvironmentVariable("MyAPIToken"); //Inserting this into computer's enviornment variables, keeps it safe. 
 
-        string? dataSource = Environment.GetEnvironmentVariable("DB_SERVER");
+        string? apiKey = Environment.GetEnvironmentVariable("MyAPIToken"); //Inserting this into computer's enviornment variables, keeps it safe. 
+        string? dataSource = Environment.GetEnvironmentVariable("DB_SOURCE");
         string? databaseName = Environment.GetEnvironmentVariable("DB_NAME");
         string? username = Environment.GetEnvironmentVariable("DB_USER");
         string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
@@ -33,7 +33,7 @@ class Program
             Environment.Exit(0);
         }
 
-        string connectionString = $"Data Source={dataSource};Initial Catalog={databaseName};User ID={username};Password={password};";
+        string connectionString = $"Server={dataSource};Database={databaseName};User ID={username};Password={password};Integrated Security=False;Trusted_Connection=False;";
 
         if(apiKey == string.Empty) {
             Console.WriteLine("Your API Key is empty.");
@@ -42,6 +42,7 @@ class Program
             if(symbols == null || symbols.Count == 0) {
                 Console.WriteLine("No Symbols were retrieved from NASDAQ.com. Check your connection and parameters.");
             } else {
+                symbols.Sort();
                 Console.WriteLine("There were " + symbols.Count + " symbols returned from NASDAQ.com.");
 
                 Console.Write("Enter Begin Date (e.g. 10/22/1987): ");
@@ -84,7 +85,7 @@ class Program
                 TimeSpan differenceOfDate = dtmBeginDate - dtmEndDate;
                 int numberOfDays = differenceOfDate.Days;
                 int numberOfMaxRequestsPerSymbol = (int)Math.Ceiling((double)numberOfDays / 120); // 120 Days is the Max Amount of Tick Data you can receive at a time per symbol.
-                if(numberOfMaxRequestsPerSymbol * symbols.Count > 20000 ) { //100,000 API calls allowed per day, each request counts as 5 API calls, so 20,000 API calls allowed/per day
+                if((numberOfMaxRequestsPerSymbol * symbols.Count * -1) > 20000 ) { //100,000 API calls allowed per day, each request counts as 5 API calls, so 20,000 API calls allowed/per day
                     Console.WriteLine("Warning: The number of requests that this calculation will take, exceed the number of maximum allowed requests from the API per day. ");
                     Console.WriteLine("The program will request as much data as possible today, then it will output the last totally retrieved Symbol to the Console and a Text File (named PiercefieldSymbolLast########.txt) to your desktop.");
                     Console.WriteLine("This program is smart enough to not begin work on retrieving data for a new Symbol unless the full amount of data can be requested before running out of daily API calls.");
